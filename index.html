@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>p4-merger</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel-2:#1c232d; --line:#2a323d;
+    --ink:#e6edf3; --muted:#9aa7b4; --faint:#6b7684;
+    --accent:#4d8dff; --accent-bg:#16233d;
+    --good:#3fb950; --good-bg:#132a1c; --warn:#d29922; --warn-bg:#2a2312;
+    --danger:#f85149; --danger-bg:#2a1614;
+    --add-bg:#122a1d; --add-ink:#56d364; --del-bg:#2b1614; --del-ink:#f0857d;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+  .wrap{max-width:1040px;margin:0 auto;padding:26px 20px 90px}
+  h1{font-size:20px;margin:0 0 2px;letter-spacing:-.01em}
+  h1 .p4{color:var(--accent)}
+  .sub{color:var(--faint);font-size:12.5px;margin-bottom:22px}
+  .sub code{font-family:var(--mono);background:var(--panel-2);padding:1px 5px;border-radius:4px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 18px}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;letter-spacing:.02em}
+  textarea,input[type=text]{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:10px 11px;font-family:var(--mono);font-size:12.5px;resize:vertical}
+  textarea{min-height:88px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .field{margin-bottom:15px}
+  .hint{color:var(--faint);font-size:11.5px;margin-top:5px;font-weight:400}
+  .toggles{display:flex;flex-wrap:wrap;gap:16px;margin:4px 0 16px}
+  .tg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink);cursor:pointer}
+  .tg input{width:15px;height:15px;accent-color:var(--accent)}
+  .modelsel{display:flex;align-items:center;gap:8px}
+  .modelsel input{width:120px}
+  .actions{display:flex;align-items:center;gap:14px;margin-top:4px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 20px;
+    font-size:14px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  .status{color:var(--muted);font-size:12.5px}
+  /* SCL banner */
+  .scl{display:none;margin:20px 0 0;border-radius:12px;padding:16px 18px;border:1px solid var(--good);
+    background:var(--good-bg)}
+  .scl.show{display:block}
+  .scl.fail{border-color:var(--danger);background:var(--danger-bg)}
+  .scl .big{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.01em}
+  .scl .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .scl .cp{margin-left:12px;font-size:12px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--ink);border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:500}
+  /* terminal */
+  .term{display:none;margin-top:20px;background:#0a0d12;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .term.show{display:block}
+  .term-bar{display:flex;align-items:center;gap:8px;padding:9px 13px;background:#11161d;border-bottom:1px solid var(--line)}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .term-title{font-family:var(--mono);font-size:12px;color:var(--muted);margin-left:6px}
+  .term-body{padding:12px 14px;font-family:var(--mono);font-size:12px;max-height:320px;overflow:auto}
+  .ln{white-space:pre-wrap;word-break:break-word;padding:1px 0}
+  .ln.info{color:var(--muted)} .ln.ok{color:var(--good)} .ln.err{color:var(--danger)}
+  .ln.warn{color:var(--warn)} .ln.head{color:var(--accent);font-weight:600;margin-top:8px}
+  .ln.dim{color:var(--faint)}
+  /* file result cards */
+  .files{margin-top:22px;display:flex;flex-direction:column;gap:16px}
+  .fc{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .fc-h{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .fc-h .name{font-family:var(--mono);font-size:13px;font-weight:600}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:999px;padding:3px 10px}
+  .pill.merged{color:var(--good);background:var(--good-bg);border:1px solid var(--good)}
+  .pill.no-change{color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent)}
+  .pill.fail{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger)}
+  .fc-body{padding:14px 16px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .meta b{color:var(--ink)}
+  .p4box{background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:9px 11px;
+    font-family:var(--mono);font-size:11.5px;margin-bottom:12px}
+  .p4box div{padding:1px 0;color:var(--muted)}
+  .loc{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-bottom:10px}
+  pre.diff{margin:0;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    font-family:var(--mono);font-size:12px;overflow:auto;max-height:420px}
+  pre.diff .a{color:var(--add-ink);background:var(--add-bg);display:block}
+  pre.diff .d{color:var(--del-ink);background:var(--del-bg);display:block}
+  pre.diff .h{color:var(--accent);display:block}
+  pre.diff .c{color:var(--muted);display:block}
+  details summary{cursor:pointer;color:var(--muted);font-size:12.5px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="p4">p4</span>-merger</h1>
+  <div class="sub">Give it files + a patch. It maps them into your workspace, reverts to
+  latest, opens a changelist, has <code>claude</code> merge the patch in, and
+  <b>shelves the CL</b> — then hands you the shelved changelist number. Never <code>p4 submit</code>.</div>
+
+  <div class="card">
+    <div class="field">
+      <label>Files — one per line (depot <code>//depot/...</code> or local paths)</label>
+      <textarea id="files" placeholder="//depot/proj/npu/npu_auth.c&#10;//depot/proj/npu/npu_mem.c"></textarea>
+      <div class="hint">Each file is matched to a hunk in the patch by filename.</div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Patch file path</label>
+        <input type="text" id="patchPath" placeholder="/path/to/fix.patch">
+        <div class="hint">…or paste the patch text below instead.</div>
+      </div>
+      <div class="field">
+        <label>Changelist description (optional)</label>
+        <input type="text" id="desc" placeholder="auto: taken from the patch subject / CVE / CR">
+      </div>
+    </div>
+    <div class="field">
+      <label>…or paste patch text</label>
+      <textarea id="patchText" placeholder="From ... Subject: [PATCH] ...&#10;--- a/file.c&#10;+++ b/file.c&#10;@@ ..."></textarea>
+    </div>
+
+    <div class="toggles">
+      <label class="tg"><input type="checkbox" id="autoMap" checked> auto-map unmapped files</label>
+      <label class="tg"><input type="checkbox" id="shelve" checked> shelve the CL (create the SCL)</label>
+      <label class="tg"><input type="checkbox" id="noP4"> no p4 — merge local files only (dry run)</label>
+      <span class="modelsel"><label class="tg" style="margin:0">model</label>
+        <input type="text" id="model" placeholder="(default)"></span>
+    </div>
+
+    <div class="actions">
+      <button id="run">Merge &amp; shelve</button>
+      <span class="status" id="statusLine"></span>
+    </div>
+  </div>
+
+  <div class="scl" id="scl">
+    <div class="lbl" id="sclLbl">Shelved changelist (SCL)</div>
+    <div><span class="big" id="sclNum">—</span>
+      <button class="cp" id="sclCopy">copy CL#</button></div>
+    <div class="status" id="sclNote"></div>
+  </div>
+
+  <div class="term" id="term">
+    <div class="term-bar"><span class="dot r"></span><span class="dot y"></span>
+      <span class="dot g"></span><span class="term-title" id="termTitle">idle</span></div>
+    <div class="term-body" id="termBody"></div>
+  </div>
+
+  <div class="files" id="files-out"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const cfg = {p4:false, claude:false};
+
+fetch('/api/config').then(r=>r.json()).then(c=>{
+  Object.assign(cfg, c);
+  const bits=[];
+  bits.push('p4: '+(c.p4?'found':'not found — use the no-p4 toggle'));
+  bits.push('claude: '+(c.claude?'found':'NOT found'));
+  $('#statusLine').textContent = bits.join('   ·   ');
+  if(!c.p4) $('#noP4').checked = true;
+});
+
+function termLine(text, cls){
+  const b=$('#termBody');
+  const d=document.createElement('div');
+  d.className='ln '+(cls||'');
+  d.textContent=text;
+  b.appendChild(d); b.scrollTop=b.scrollHeight;
+}
+function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function diffHtml(diff){
+  if(!diff) return '';
+  const out=[];
+  for(const raw of diff.split('\n')){
+    let cls='c';
+    if(raw.startsWith('+++')||raw.startsWith('---')||raw.startsWith('diff ')) cls='h';
+    else if(raw.startsWith('@@')) cls='h';
+    else if(raw.startsWith('+')) cls='a';
+    else if(raw.startsWith('-')) cls='d';
+    out.push('<span class="'+cls+'">'+ (esc(raw)||' ') +'</span>');
+  }
+  return '<pre class="diff">'+out.join('')+'</pre>';
+}
+
+const cards = {};   // target -> element
+function cardFor(target){
+  if(cards[target]) return cards[target];
+  const el=document.createElement('div');
+  el.className='fc';
+  el.innerHTML='<div class="fc-h"><span class="name">'+esc(target)+'</span>'
+    +'<span class="pill" data-pill>working…</span></div>'
+    +'<div class="fc-body"><div class="p4box" data-p4></div>'
+    +'<div class="loc" data-loc></div>'
+    +'<div class="meta" data-analysis></div>'
+    +'<div data-diff></div></div>';
+  $('#files-out').appendChild(el);
+  cards[target]=el;
+  return el;
+}
+function setPill(el, status){
+  const p=el.querySelector('[data-pill]');
+  const map={merged:'merged','no-change':'no change'};
+  const cls = status==='merged'?'merged':status==='no-change'?'no-change':'fail';
+  p.className='pill '+cls;
+  p.textContent = map[status]||status;
+}
+
+async function run(){
+  // reset
+  $('#files-out').innerHTML=''; for(const k in cards) delete cards[k];
+  $('#termBody').innerHTML=''; $('#term').classList.add('show');
+  $('#scl').classList.remove('show','fail');
+  $('#termTitle').textContent='running…';
+  $('#run').disabled=true;
+
+  const files = $('#files').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const body = {
+    files,
+    patch_text: $('#patchText').value.trim(),
+    patch_path: $('#patchPath').value.trim(),
+    description: $('#desc').value.trim(),
+    model: $('#model').value.trim(),
+    auto_map: $('#autoMap').checked,
+    shelve: $('#shelve').checked,
+    use_p4: !$('#noP4').checked,
+  };
+  if(!files.length){ termLine('! add at least one file','err'); $('#run').disabled=false; return; }
+  if(!body.patch_text && !body.patch_path){ termLine('! provide a patch (path or pasted text)','err'); $('#run').disabled=false; return; }
+
+  let resp;
+  try{
+    resp = await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+  }catch(e){ termLine('! request failed: '+e,'err'); $('#run').disabled=false; return; }
+  if(!resp.ok){ const t=await resp.text(); termLine('! '+t,'err'); $('#run').disabled=false; return; }
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf='';
+  while(true){
+    const {value,done} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value,{stream:true});
+    let nl;
+    while((nl=buf.indexOf('\n'))>=0){
+      const line=buf.slice(0,nl); buf=buf.slice(nl+1);
+      if(line.trim()) handle(JSON.parse(line));
+    }
+  }
+  $('#run').disabled=false;
+  $('#termTitle').textContent='done';
+}
+
+function handle(e){
+  switch(e.type){
+    case 'log': termLine(e.msg, e.level); break;
+    case 'file_start':
+      termLine('▸ '+e.target,'head'); cardFor(e.target); break;
+    case 'file_p4':{
+      const box=cardFor(e.target).querySelector('[data-p4]');
+      const d=document.createElement('div'); d.textContent=e.line; box.appendChild(d);
+      termLine('  '+e.line, e.ok?'dim':'err'); break; }
+    case 'located':{
+      const el=cardFor(e.target).querySelector('[data-loc]');
+      el.textContent += (el.textContent?'   |   ':'📍 ') + 'hunk '+e.hunk+': '+e.where;
+      termLine('  · hunk '+e.hunk+' → '+e.where,'dim'); break; }
+    case 'analysis':{
+      cardFor(e.target).querySelector('[data-analysis]').innerHTML =
+        '<b>What it does:</b> '+esc(e.text);
+      termLine('  ~ '+e.text,'info'); break; }
+    case 'merge_start': termLine('  · claude merging…','info'); break;
+    case 'file_done':{
+      const el=cardFor(e.target); setPill(el, e.status);
+      if(e.status==='merged') el.querySelector('[data-diff]').innerHTML = diffHtml(e.diff);
+      else if(e.status==='no-change')
+        el.querySelector('[data-diff]').innerHTML='<div class="meta">No change — the patch is already present.</div>';
+      termLine('  = '+e.status, e.status==='merged'?'ok':e.status==='no-change'?'info':'err');
+      break; }
+    case 'done': finish(e); break;
+  }
+}
+
+function finish(e){
+  const scl=$('#scl');
+  scl.classList.add('show');
+  if(e.cl && e.shelved){
+    $('#sclLbl').textContent='Shelved changelist (SCL) — ready to review / share';
+    $('#sclNum').textContent = e.cl;
+    $('#sclNote').textContent = 'p4 describe -S '+e.cl+'   ·   unshelve: p4 unshelve -s '+e.cl
+      +'   ·   '+summ(e.summary);
+  }else if(e.cl){
+    $('#sclNum').textContent = e.cl;
+    $('#sclLbl').textContent='Pending changelist (not shelved)';
+    $('#sclNote').textContent = summ(e.summary);
+  }else{
+    scl.classList.add('fail');
+    $('#sclNum').textContent='—';
+    $('#sclLbl').textContent = e.ok? 'Merged (local dry run — no p4)' : 'No changelist created';
+    $('#sclNote').textContent = summ(e.summary);
+  }
+}
+function summ(s){ if(!s) return ''; return `${s.merged} merged · ${s.no_change} no-change · ${s.failed} failed`; }
+
+$('#sclCopy').onclick=()=>{
+  const n=$('#sclNum').textContent.trim();
+  if(n && n!=='—'){ navigator.clipboard.writeText(n); $('#sclCopy').textContent='copied ✓';
+    setTimeout(()=>$('#sclCopy').textContent='copy CL#',1200); }
+};
+$('#run').onclick=run;
+</script>
+</body>
+</html>
